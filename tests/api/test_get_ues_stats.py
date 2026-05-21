@@ -202,3 +202,18 @@ def test_multiple_ues_and_bearers_sums_bps_correctly(mock_repo, mock_tm):
     assert result.bearer_count == 4
     assert result.total_tx_bps == 10400
     assert result.total_rx_bps == 5200
+
+
+# ---------------------------------------------------------------------------
+# TC11 — race condition: ue_exists=True, ale get_ue rzuca ValueError (ue_id podany)
+# ---------------------------------------------------------------------------
+
+def test_get_ue_value_error_raises_http_400_when_ue_id_filter_set(mock_repo, mock_tm):
+    mock_repo.ue_exists.return_value = True
+    mock_repo.get_ue.side_effect = ValueError("UE not found")
+
+    with pytest.raises(HTTPException) as exc_info:
+        get_ues_stats(repo=mock_repo, ue_id=1)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "UE not found"
