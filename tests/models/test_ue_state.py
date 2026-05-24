@@ -32,6 +32,10 @@ def test_ue_state_rejects_ue_id_above_100():
     assert_validation_error(lambda: UEState(ue_id=101), "ue_id")
 
 
+def test_ue_state_requires_ue_id():
+    assert_validation_error(lambda: UEState(), "ue_id")
+
+
 def test_ue_state_holds_bearer_and_stats_dicts():
     state = UEState(
         ue_id=5,
