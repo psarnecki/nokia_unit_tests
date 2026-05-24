@@ -3,9 +3,13 @@ from epc.models import BearerConfig, ThroughputStats, UEState
 from tests.models.conftest import assert_validation_error
 
 
-def test_ue_state_none_bearers_and_stats_become_empty_dicts():
-    state = UEState(ue_id=1, bearers=None, stats=None)
+def test_ue_state_none_bearers_becomes_empty_dict():
+    state = UEState(ue_id=1, bearers=None)
     assert state.bearers == {}
+
+
+def test_ue_state_none_stats_becomes_empty_dict():
+    state = UEState(ue_id=1, stats=None)
     assert state.stats == {}
 
 
