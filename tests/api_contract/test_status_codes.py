@@ -156,11 +156,33 @@ def test_get_traffic_stats_ue_not_found_returns_400(client):
 
 
 # ---------------------------------------------------------------------------
-# TC13 — GET /ues/stats?ue_id={nieistniejący} → 400
+# TC12b — GET .../traffic dla bearera, który nie należy do UE → 400
 # ---------------------------------------------------------------------------
 
-def test_get_ues_stats_unknown_ue_returns_400(client):
-    response = client.get("/ues/stats", params={"ue_id": 99})
+def test_get_traffic_stats_bearer_not_found_returns_400(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.get("/ues/1/bearers/3/traffic")
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "UE not found"
+    assert response.json()["detail"] == "Bearer not found"
+
+
+# ---------------------------------------------------------------------------
+# TC13 — GET /ues/stats?ue_id={nieistniejący} → 200
+# ---------------------------------------------------------------------------
+
+def test_get_ues_stats_unknown_ue_returns_200(client):
+    response = client.get("/ues/stats", params={"ue_id": 99})
+
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TC14 — DELETE /ues/{ue_id}/traffic (bez bearer_id) → 200
+# ---------------------------------------------------------------------------
+
+def test_stop_ue_traffic_without_bearer_id_returns_200(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.delete("/ues/1/traffic")
+
+    assert response.status_code == 200

@@ -121,6 +121,17 @@ def test_get_traffic_stats_returns_200(client):
 
 
 # ---------------------------------------------------------------------------
+# TC10b — GET /ues/{ue_id}/traffic zwraca 200
+# ---------------------------------------------------------------------------
+
+def test_get_ue_traffic_summary_returns_200(client):
+    client.post("/ues", json={"ue_id": 2})
+    response = client.get("/ues/2/traffic")
+
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # TC11 — GET /ues/stats zwraca 200
 # ---------------------------------------------------------------------------
 
@@ -131,7 +142,17 @@ def test_get_ues_stats_returns_200(client):
 
 
 # ---------------------------------------------------------------------------
-# TC12 — POST /reset zwraca 200
+# TC12 — DELETE /ues/traffic zwraca 200
+# ---------------------------------------------------------------------------
+
+def test_delete_all_traffic_returns_200(client):
+    response = client.delete("/ues/traffic")
+
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TC13 — POST /reset zwraca 200
 # ---------------------------------------------------------------------------
 
 def test_post_reset_returns_200(client):
@@ -141,7 +162,18 @@ def test_post_reset_returns_200(client):
 
 
 # ---------------------------------------------------------------------------
-# TC13 — zła metoda HTTP na istniejącej ścieżce zwraca 405
+# TC12b — DELETE /ues/{ue_id}/traffic zwraca 200
+# ---------------------------------------------------------------------------
+
+def test_delete_ue_traffic_without_bearer_id_returns_200(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.delete("/ues/1/traffic")
+
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TC14 — zła metoda HTTP na istniejącej ścieżce zwraca 405
 # ---------------------------------------------------------------------------
 
 def test_wrong_method_returns_405(client):
@@ -151,7 +183,7 @@ def test_wrong_method_returns_405(client):
 
 
 # ---------------------------------------------------------------------------
-# TC14 — zły typ path param (string zamiast int) zwraca 422
+# TC15 — zły typ path param (string zamiast int) zwraca 422
 # ---------------------------------------------------------------------------
 
 def test_path_param_wrong_type_returns_422(client):
@@ -161,7 +193,7 @@ def test_path_param_wrong_type_returns_422(client):
 
 
 # ---------------------------------------------------------------------------
-# TC15 — nieznana ścieżka zwraca 404
+# TC16 — nieznana ścieżka zwraca 404
 # ---------------------------------------------------------------------------
 
 def test_unknown_path_returns_404(client):

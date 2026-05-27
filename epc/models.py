@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -43,16 +45,20 @@ class AddBearerRequest(BaseModel):
 
 
 class StartTrafficRequest(BaseModel):
+    MAX_DL_BPS: ClassVar[int] = 100_000_000
+
     protocol: str = Field(pattern="^(tcp|udp)$")
-    Mbps: float | None = None
-    kbps: float | None = None
-    bps: float | None = None
+    Mbps: float | None = Field(default=None, ge=0)
+    kbps: float | None = Field(default=None, ge=0)
+    bps: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def exactly_one_throughput(self):
         provided = [v for v in [self.Mbps, self.kbps, self.bps] if v is not None]
         if len(provided) != 1:
             raise ValueError("Provide exactly one throughput value (Mbps, kbps, or bps)")
+        if self.target_bps() > self.MAX_DL_BPS:
+            raise ValueError("Maximum supported throughput is 100 Mbps (DL)")
         return self
 
     def target_bps(self) -> int:
@@ -105,6 +111,14 @@ class TrafficStatsResponse(BaseModel):
     tx_bps: int
     rx_bps: int
     duration: float
+
+
+class UESummaryTrafficResponse(BaseModel):
+    ue_id: int
+    unit: str  # bps/kbps/Mbps
+    tx: int
+    rx: int
+    bearer_count: int
 
 
 class UEDisplayResponse(UEState):

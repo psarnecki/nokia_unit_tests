@@ -2,11 +2,15 @@ import pytest
 from fastapi import HTTPException
 
 from epc.api import get_traffic_stats
-from epc.models import ThroughputStats, UEState
+from epc.models import BearerConfig, ThroughputStats, UEState
 
 
 def _ue_with_stats(stats: ThroughputStats) -> UEState:
-    return UEState(ue_id=stats.ue_id, stats={stats.bearer_id: stats})
+    return UEState(
+        ue_id=stats.ue_id,
+        bearers={stats.bearer_id: BearerConfig(bearer_id=stats.bearer_id)},
+        stats={stats.bearer_id: stats},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -14,7 +18,11 @@ def _ue_with_stats(stats: ThroughputStats) -> UEState:
 # ---------------------------------------------------------------------------
 
 def test_get_traffic_stats_returns_zeros_when_no_stats(mock_repo, mock_tm):
-    mock_repo.get_ue.return_value = UEState(ue_id=1, stats={})
+    mock_repo.get_ue.return_value = UEState(
+        ue_id=1,
+        bearers={9: BearerConfig(bearer_id=9)},
+        stats={},
+    )
 
     result = get_traffic_stats(ue_id=1, bearer_id=9, repo=mock_repo)
 
@@ -25,6 +33,20 @@ def test_get_traffic_stats_returns_zeros_when_no_stats(mock_repo, mock_tm):
     assert result.duration == 0
     assert result.protocol is None
     assert result.target_bps is None
+
+
+# ---------------------------------------------------------------------------
+# TC1b — bearer nie należy do UE → HTTP 400
+# ---------------------------------------------------------------------------
+
+def test_get_traffic_stats_bearer_not_found_raises_http_400(mock_repo, mock_tm):
+    mock_repo.get_ue.return_value = UEState(ue_id=1, bearers={9: BearerConfig(bearer_id=9)}, stats={})
+
+    with pytest.raises(HTTPException) as exc_info:
+        get_traffic_stats(ue_id=1, bearer_id=3, repo=mock_repo)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Bearer not found"
 
 
 # ---------------------------------------------------------------------------

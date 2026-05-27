@@ -26,27 +26,31 @@ class TrafficGeneratorManager:
 
     async def _run_simulated_bearer(self, ue_id: int, bearer_id: int, target_bps: int, protocol: str):
         interval = 1.0  # seconds per update
-        bytes_per_interval = int(target_bps / 8 * interval)  # convert bps to bytes/sec
+        last_ts = time.time()
         while True:
+            # Sleep first to avoid an initial "burst"
+            await asyncio.sleep(interval)
+            now = time.time()
+            dt = max(0.0, now - last_ts)
+            last_ts = now
+            bytes_to_add = int(target_bps / 8 * dt)
             state = self.repo.get_ue(ue_id)
             stats = state.stats.get(bearer_id)
             if not stats:
                 stats = ThroughputStats(bearer_id=bearer_id, ue_id=ue_id, start_ts=time.time())
             if stats.start_ts is None:
                 stats.start_ts = time.time()
-            stats.last_update_ts = time.time()
-            stats.bytes_tx += bytes_per_interval
-            stats.bytes_rx += bytes_per_interval
+            stats.last_update_ts = now
+            stats.bytes_rx += bytes_to_add
             stats.protocol = protocol
             stats.target_bps = target_bps
             self.repo.update_stats(ue_id, stats)
-            await asyncio.sleep(interval)
 
     def start(self, ue_id: int, bearer: BearerConfig):
         key = (ue_id, bearer.bearer_id)
         if key in self.tasks:
             raise ValueError("Traffic already running")
-        if not bearer.target_bps or not bearer.protocol:
+        if bearer.target_bps is None or not bearer.protocol:
             raise ValueError("Bearer not configured for traffic")
         future = asyncio.run_coroutine_threadsafe(
             self._run_simulated_bearer(ue_id, bearer.bearer_id, bearer.target_bps, bearer.protocol),
@@ -65,6 +69,13 @@ class TrafficGeneratorManager:
         for key, future in list(self.tasks.items()):
             future.cancel()
             del self.tasks[key]
+
+    def stop_ue(self, ue_id: int):
+        for (task_ue_id, bearer_id), future in list(self.tasks.items()):
+            if task_ue_id != ue_id:
+                continue
+            future.cancel()
+            del self.tasks[(task_ue_id, bearer_id)]
 
     def is_running(self, ue_id: int, bearer_id: int) -> bool:
         return (ue_id, bearer_id) in self.tasks

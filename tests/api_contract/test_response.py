@@ -147,3 +147,41 @@ def test_reset_response_shape(client):
     data = response.json()
     assert set(data.keys()) == {"status"}
     assert data["status"] == "reset"
+
+
+# ---------------------------------------------------------------------------
+# TC11 — DELETE /ues/traffic zwraca {"status"}
+# ---------------------------------------------------------------------------
+
+def test_stop_all_traffic_response_shape(client):
+    response = client.delete("/ues/traffic")
+
+    data = response.json()
+    assert set(data.keys()) == {"status"}
+    assert data["status"] == "traffic_stopped"
+
+
+# ---------------------------------------------------------------------------
+# TC11 — DELETE /ues/{ue_id}/traffic zwraca {"status"}
+# ---------------------------------------------------------------------------
+
+def test_stop_ue_traffic_without_bearer_id_response_shape(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.delete("/ues/1/traffic")
+
+    data = response.json()
+    assert set(data.keys()) == {"status"}
+    assert data["status"] == "traffic_stopped"
+
+
+# ---------------------------------------------------------------------------
+# TC12 — GET /ues/{ue_id}/traffic zwraca {"ue_id","unit","tx","rx","bearer_count"}
+# ---------------------------------------------------------------------------
+
+def test_get_ue_traffic_summary_response_shape(client):
+    client.post("/ues", json={"ue_id": 2})
+    response = client.get("/ues/2/traffic")
+
+    data = response.json()
+    assert set(data.keys()) == {"ue_id", "unit", "tx", "rx", "bearer_count"}
+    assert data["ue_id"] == 2

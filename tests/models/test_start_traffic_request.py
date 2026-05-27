@@ -37,6 +37,24 @@ def test_start_traffic_request_rejects_all_three_throughput_fields():
     )
 
 
+def test_start_traffic_request_rejects_negative_throughput_value():
+    assert_validation_error(
+        lambda: _req(protocol="tcp", Mbps=-40.0),
+        "greater than or equal to 0",
+    )
+
+
+def test_start_traffic_request_accepts_zero_throughput_value():
+    assert _req(protocol="tcp", Mbps=0).target_bps() == 0
+
+
+def test_start_traffic_request_rejects_throughput_above_100_mbps():
+    assert_validation_error(
+        lambda: _req(protocol="tcp", Mbps=180),
+        "Maximum supported throughput is 100 Mbps",
+    )
+
+
 def test_target_bps_from_mbps():
     assert _req(protocol="tcp", Mbps=10.0).target_bps() == 10_000_000
 

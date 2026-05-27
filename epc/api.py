@@ -17,6 +17,7 @@ from .models import (
     TrafficStatsResponse,
     TrafficStopResponse,
     UEDisplayResponse,
+    UESummaryTrafficResponse,
     UEListResponse,
 )
 from .db import EPCRepository
@@ -40,9 +41,8 @@ def get_ues_stats(
     ue_id: int | None = None,
     include_details: bool = False,
 ):
-    if ue_id is not None and not repo.ue_exists(ue_id):
-        raise HTTPException(status_code=400, detail="UE not found")
     ues = [ue_id] if ue_id is not None else list(repo.list_ues())
+    found_ues: list[int] = []
     total_tx = 0
     total_rx = 0
     bearer_count = 0
@@ -52,9 +52,8 @@ def get_ues_stats(
         try:
             state = repo.get_ue(uid)
         except ValueError:
-            if ue_id is not None:
-                raise HTTPException(status_code=400, detail="UE not found")
             continue
+        found_ues.append(uid)
         for b_id, stats in state.stats.items():
             end_ts = time.time() if (stats.start_ts and tm.is_running(uid, b_id)) else stats.last_update_ts
             duration = (end_ts - stats.start_ts) if (stats.start_ts and end_ts is not None) else 0
@@ -68,7 +67,7 @@ def get_ues_stats(
     scope = f"ue:{ue_id}" if ue_id is not None else "all"
     return AggregatedStatsResponse(
         scope=scope,
-        ue_count=len(ues),
+        ue_count=len(found_ues),
         bearer_count=bearer_count,
         total_tx_bps=total_tx,
         total_rx_bps=total_rx,
@@ -79,6 +78,24 @@ def get_ues_stats(
 @router.get("/ues", response_model=UEListResponse)
 def list_ues(repo: Annotated[EPCRepository, Depends(get_repo)]):
     return UEListResponse(ues=list(repo.list_ues()))
+
+
+@router.delete("/ues/traffic", response_model=StatusResponse)
+def stop_all_traffic(repo: Annotated[EPCRepository, Depends(get_repo)]):
+    tm = get_traffic_manager(repo)
+    tm.stop_all()
+
+    # Keep persisted state consistent: mark all bearers inactive.
+    for ue_id in list(repo.list_ues()):
+        try:
+            state = repo.get_ue(ue_id)
+        except ValueError:
+            continue
+        for bearer in state.bearers.values():
+            if bearer.active:
+                bearer.active = False
+                repo.update_bearer(ue_id, bearer)
+    return StatusResponse(status="traffic_stopped")
 
 
 @router.post("/ues", response_model=AttachResponse)
@@ -211,6 +228,36 @@ def stop_traffic(
     return TrafficStopResponse(status="traffic_stopped", ue_id=ue_id, bearer_id=bearer_id)
 
 
+@router.delete("/ues/{ue_id}/traffic", response_model=StatusResponse)
+def stop_ue_traffic(
+    ue_id: int,
+    repo: Annotated[EPCRepository, Depends(get_repo)],
+    bearer_id: int | None = None,
+):
+    try:
+        state = repo.get_ue(ue_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    tm = get_traffic_manager(repo)
+
+    if bearer_id is None:
+        tm.stop_ue(ue_id)
+        for b in state.bearers.values():
+            if b.active:
+                b.active = False
+                repo.update_bearer(ue_id, b)
+        return StatusResponse(status="traffic_stopped")
+
+    bearer = state.bearers.get(bearer_id)
+    if not bearer:
+        raise HTTPException(status_code=400, detail="Bearer not found")
+    tm.stop(ue_id, bearer_id)
+    bearer.active = False
+    repo.update_bearer(ue_id, bearer)
+    return StatusResponse(status="traffic_stopped")
+
+
 @router.get("/ues/{ue_id}/bearers/{bearer_id}/traffic", response_model=TrafficStatsResponse)
 def get_traffic_stats(
     ue_id: int,
@@ -221,6 +268,8 @@ def get_traffic_stats(
         state = repo.get_ue(ue_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if bearer_id not in state.bearers:
+        raise HTTPException(status_code=400, detail="Bearer not found")
     stats = state.stats.get(bearer_id)
     if not stats:
         return TrafficStatsResponse(
@@ -245,6 +294,57 @@ def get_traffic_stats(
         tx_bps=tx_bps,
         rx_bps=rx_bps,
         duration=duration,
+    )
+
+
+@router.get("/ues/{ue_id}/traffic", response_model=UESummaryTrafficResponse)
+def get_ue_traffic_summary(
+    ue_id: int,
+    repo: Annotated[EPCRepository, Depends(get_repo)],
+    bearer_id: int | None = None,
+    unit: str | None = None,
+):
+    try:
+        state = repo.get_ue(ue_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if unit is None:
+        unit = "kbps"
+    if unit not in {"bps", "kbps", "Mbps"}:
+        raise HTTPException(status_code=422, detail="Invalid unit")
+
+    factor = 1
+    if unit == "kbps":
+        factor = 1_000
+    elif unit == "Mbps":
+        factor = 1_000_000
+
+    tm = get_traffic_manager(repo)
+
+    bearer_ids = [bearer_id] if bearer_id is not None else list(state.bearers.keys())
+    if bearer_id is not None and bearer_id not in state.bearers:
+        raise HTTPException(status_code=400, detail="Bearer not found")
+
+    total_tx_bps = 0
+    total_rx_bps = 0
+    counted = 0
+    for b_id in bearer_ids:
+        stats = state.stats.get(b_id)
+        counted += 1
+        if not stats:
+            continue
+        end_ts = time.time() if (stats.start_ts and tm.is_running(ue_id, b_id)) else stats.last_update_ts
+        duration = (end_ts - stats.start_ts) if (stats.start_ts and end_ts is not None) else 0
+        total_tx_bps += int(stats.bytes_tx * 8 / duration) if duration > 0 else 0
+        total_rx_bps += int(stats.bytes_rx * 8 / duration) if duration > 0 else 0
+
+    return UESummaryTrafficResponse(
+        ue_id=ue_id,
+        unit=unit,
+        tx=int(total_tx_bps / factor),
+        rx=int(total_rx_bps / factor),
+        bearer_count=counted,
     )
 
 

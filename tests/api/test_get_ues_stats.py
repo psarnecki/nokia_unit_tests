@@ -113,14 +113,12 @@ def test_stats_with_no_start_ts_returns_zero_bps(mock_repo, mock_tm):
 # ---------------------------------------------------------------------------
 
 def test_filter_by_existing_ue_id_returns_scoped_stats(mock_repo, mock_tm):
-    mock_repo.ue_exists.return_value = True
     mock_repo.get_ue.return_value = UEState(ue_id=1, stats={})
 
     result = get_ues_stats(repo=mock_repo, ue_id=1)
 
     assert result.scope == "ue:1"
     assert result.ue_count == 1
-    mock_repo.ue_exists.assert_called_once_with(1)
 
 
 # ---------------------------------------------------------------------------
@@ -128,13 +126,15 @@ def test_filter_by_existing_ue_id_returns_scoped_stats(mock_repo, mock_tm):
 # ---------------------------------------------------------------------------
 
 def test_filter_by_nonexistent_ue_id_raises_http_400(mock_repo, mock_tm):
-    mock_repo.ue_exists.return_value = False
+    mock_repo.get_ue.side_effect = ValueError("UE not found")
 
-    with pytest.raises(HTTPException) as exc_info:
-        get_ues_stats(repo=mock_repo, ue_id=99)
+    result = get_ues_stats(repo=mock_repo, ue_id=99)
 
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "UE not found"
+    assert result.scope == "ue:99"
+    assert result.ue_count == 0
+    assert result.bearer_count == 0
+    assert result.total_tx_bps == 0
+    assert result.total_rx_bps == 0
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ def test_get_ue_value_error_is_skipped_when_no_ue_id_filter(mock_repo, mock_tm):
 
     result = get_ues_stats(repo=mock_repo)
 
-    assert result.ue_count == 1
+    assert result.ue_count == 0
     assert result.bearer_count == 0
 
 
@@ -209,11 +209,10 @@ def test_multiple_ues_and_bearers_sums_bps_correctly(mock_repo, mock_tm):
 # ---------------------------------------------------------------------------
 
 def test_get_ue_value_error_raises_http_400_when_ue_id_filter_set(mock_repo, mock_tm):
-    mock_repo.ue_exists.return_value = True
     mock_repo.get_ue.side_effect = ValueError("UE not found")
 
-    with pytest.raises(HTTPException) as exc_info:
-        get_ues_stats(repo=mock_repo, ue_id=1)
+    result = get_ues_stats(repo=mock_repo, ue_id=1)
 
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "UE not found"
+    assert result.scope == "ue:1"
+    assert result.ue_count == 0
+    assert result.bearer_count == 0

@@ -131,3 +131,45 @@ def test_start_traffic_three_throughputs_returns_422(client):
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# TC13 — POST .../traffic z ujemnym throughput (np. -40 Mbps) → 422
+# ---------------------------------------------------------------------------
+
+def test_start_traffic_negative_throughput_returns_422(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.post(
+        "/ues/1/bearers/9/traffic",
+        json={"protocol": "tcp", "Mbps": -40},
+    )
+
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# TC14 — POST .../traffic z zerowym throughput (0 Mbps) → 200
+# ---------------------------------------------------------------------------
+
+def test_start_traffic_zero_throughput_returns_200(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.post(
+        "/ues/1/bearers/9/traffic",
+        json={"protocol": "tcp", "Mbps": 0},
+    )
+
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TC15 — POST .../traffic z throughput > 100 Mbps (np. 180 Mbps) → 422
+# ---------------------------------------------------------------------------
+
+def test_start_traffic_above_max_throughput_returns_422(client):
+    client.post("/ues", json={"ue_id": 1})
+    response = client.post(
+        "/ues/1/bearers/9/traffic",
+        json={"protocol": "tcp", "Mbps": 180},
+    )
+
+    assert response.status_code == 422
